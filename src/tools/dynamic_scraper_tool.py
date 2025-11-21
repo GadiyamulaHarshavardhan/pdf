@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict, Set, Optional
 import logging
 from pathlib import Path
+import tempfile
 
 # Import optional dependencies with graceful fallback
 try:
@@ -89,6 +90,15 @@ class DynamicWebScrapingTool:
             full_url = urljoin(base_url, href)
             if self.is_valid_url(full_url):
                 links.add(full_url)
+            
+            # Also extract links from anchor texts like "Download", "Click here", etc.
+            anchor_text = link.get_text(strip=True).lower()
+            descriptive_texts = ['download', 'click here', 'explore', 'view', 'read more', 'get', 'access', 
+                                'pdf', 'document', 'file', 'link', 'here', 'this', 'source', 'material']
+            if any(text in anchor_text for text in descriptive_texts):
+                full_url = urljoin(base_url, href)
+                if self.is_valid_url(full_url):
+                    links.add(full_url)
         
         # Find other potential links
         for tag in soup.find_all(['img', 'script', 'link'], src=True):
@@ -270,51 +280,115 @@ class DynamicWebScrapingTool:
     def download_pdf(self, url: str) -> bool:
         """Download PDF file"""
         try:
+            # First, check if the URL is a direct PDF by examining headers
+            try:
+                head_response = self.session.head(url, timeout=10)
+                content_type = head_response.headers.get('content-type', '').lower()
+                
+                # If it's already a PDF based on headers, download directly
+                if 'application/pdf' in content_type or 'pdf' in content_type:
+                    response = self.session.get(url, timeout=30)
+                    response.raise_for_status()
+                    
+                    # Generate filename from URL
+                    parsed_url = urlparse(url)
+                    filename = os.path.basename(parsed_url.path)
+                    if not filename or '.' not in filename:
+                        filename = f"document_{int(time.time())}.pdf"
+                    elif not filename.lower().endswith('.pdf'):
+                        filename += '.pdf'
+                    
+                    # Clean filename
+                    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+                    filepath = self.pdf_dir / filename
+                    
+                    # Ensure unique filename
+                    counter = 1
+                    original_filepath = filepath
+                    while filepath.exists():
+                        stem = original_filepath.stem
+                        suffix = original_filepath.suffix
+                        filepath = self.pdf_dir / f"{stem}_{counter}{suffix}"
+                        counter += 1
+                    
+                    # Save the PDF
+                    with open(filepath, 'wb') as f:
+                        f.write(response.content)
+                    
+                    logger.info(f"Downloaded PDF: {filepath.name}")
+                    return True
+            except:
+                # If HEAD request fails, continue with other methods
+                pass
+            
+            # If not a direct PDF, try to navigate to the page and see if it's a PDF
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             
-            # Check if it's actually a PDF
+            # Check if it's actually a PDF by examining content
             content_type = response.headers.get('content-type', '').lower()
-            if 'pdf' not in content_type and 'application/pdf' not in content_type:
-                # If it's HTML, check if it redirects to a PDF
-                if 'text/html' in content_type:
-                    soup = BeautifulSoup(response.content, 'html.parser')
-                    # Look for meta refresh or direct PDF links
-                    meta_refresh = soup.find('meta', attrs={'http-equiv': 'refresh'})
-                    if meta_refresh:
-                        content = meta_refresh.get('content', '')
-                        if 'url=' in content:
-                            new_url = content.split('url=')[1].split(';')[0]
-                            new_url = urljoin(url, new_url)
+            content = response.content
+            
+            # Check if it's a PDF by content signature (magic bytes)
+            if content.startswith(b'%PDF-') or 'application/pdf' in content_type:
+                # Generate filename from URL
+                parsed_url = urlparse(url)
+                filename = os.path.basename(parsed_url.path)
+                if not filename or '.' not in filename:
+                    filename = f"document_{int(time.time())}.pdf"
+                elif not filename.lower().endswith('.pdf'):
+                    filename += '.pdf'
+                
+                # Clean filename
+                filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+                filepath = self.pdf_dir / filename
+                
+                # Ensure unique filename
+                counter = 1
+                original_filepath = filepath
+                while filepath.exists():
+                    stem = original_filepath.stem
+                    suffix = original_filepath.suffix
+                    filepath = self.pdf_dir / f"{stem}_{counter}{suffix}"
+                    counter += 1
+                
+                # Save the PDF
+                with open(filepath, 'wb') as f:
+                    f.write(content)
+                
+                logger.info(f"Downloaded PDF: {filepath.name}")
+                return True
+            
+            # If it's HTML, check if it redirects to a PDF or contains a PDF link
+            if 'text/html' in content_type:
+                soup = BeautifulSoup(response.content, 'html.parser')
+                
+                # Look for meta refresh that redirects to a PDF
+                meta_refresh = soup.find('meta', attrs={'http-equiv': 'refresh'})
+                if meta_refresh:
+                    content = meta_refresh.get('content', '')
+                    if 'url=' in content:
+                        new_url = content.split('url=')[1].split(';')[0]
+                        new_url = urljoin(url, new_url)
+                        if self.is_pdf_url(new_url):
                             return self.download_pdf(new_url)
+                
+                # Look for direct PDF links in the page
+                for link in soup.find_all('a', href=True):
+                    href = link['href']
+                    full_url = urljoin(url, href)
+                    if self.is_pdf_url(full_url):
+                        return self.download_pdf(full_url)
+                
+                # Check if the page itself contains PDF content in an iframe or embed
+                for embed in soup.find_all(['iframe', 'embed', 'object'], src=True):
+                    src = embed.get('src')
+                    full_url = urljoin(url, src)
+                    if self.is_pdf_url(full_url):
+                        return self.download_pdf(full_url)
             
-            # Generate filename from URL
-            parsed_url = urlparse(url)
-            filename = os.path.basename(parsed_url.path)
-            if not filename or '.' not in filename:
-                filename = f"document_{int(time.time())}.pdf"
-            elif not filename.lower().endswith('.pdf'):
-                filename += '.pdf'
-            
-            # Clean filename
-            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-            filepath = self.pdf_dir / filename
-            
-            # Ensure unique filename
-            counter = 1
-            original_filepath = filepath
-            while filepath.exists():
-                stem = original_filepath.stem
-                suffix = original_filepath.suffix
-                filepath = self.pdf_dir / f"{stem}_{counter}{suffix}"
-                counter += 1
-            
-            # Save the PDF
-            with open(filepath, 'wb') as f:
-                f.write(response.content)
-            
-            logger.info(f"Downloaded PDF: {filepath.name}")
-            return True
+            logger.warning(f"URL does not appear to be a PDF: {url}")
+            return False
             
         except Exception as e:
             logger.error(f"Failed to download PDF {url}: {e}")
