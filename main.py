@@ -11,6 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 from config.settings import Config
 from tools.web_tools import WebScrapingTools
+from tools.dynamic_scraper_tool import DynamicWebScrapingTool
 from models.llm_models import LLMModels
 from agents.document_agents import DocumentAgents
 from graph.document_graph import DocumentCollectionGraph
@@ -26,6 +27,7 @@ class AutonomousDocumentAgent:
     def __init__(self):
         self.config = Config()
         self.web_tools = WebScrapingTools()
+        self.dynamic_scraper = DynamicWebScrapingTool()
         self.llm_models = LLMModels(self.config)
         self.agents = DocumentAgents(self.llm_models, self.web_tools, self.config)
         self.organizer = DocumentOrganizer(self.config)
@@ -250,64 +252,180 @@ class AutonomousDocumentAgent:
         print(f"\nDetailed report saved to: {report_file}")
         print("="*60)
         
-        return report
+
+    def perform_dynamic_scraping(self, input_file: str = "input_urls.txt", max_depth: int = 2, delay: float = 1.0):
+        """Perform dynamic scraping on the first URL from input file"""
+        logger.info(f"Starting dynamic scraping from: {input_file}")
+        
+        # Read the first URL from input file
+        if not os.path.exists(input_file):
+            logger.error(f"Input file {input_file} not found!")
+            return None
+        
+        with open(input_file, 'r', encoding='utf-8') as f:
+            urls = [line.strip() for line in f if line.strip() and line.startswith(('http://', 'https://'))]
+        
+        if not urls:
+            logger.error("No valid URLs found in input file!")
+            return None
+        
+        # Take the first URL
+        first_url = urls[0]
+        logger.info(f"Using first URL: {first_url}")
+        
+        # Perform dynamic scraping
+        try:
+            results = self.dynamic_scraper.scrape_dynamic_website(
+                start_url=first_url,
+                max_depth=max_depth,
+                delay=delay
+            )
+            
+            logger.info(f"Dynamic scraping completed!")
+            logger.info(f"Total links found: {results['total_links_found']}")
+            logger.info(f"PDF links found: {results['pdf_links_found']}")
+            logger.info(f"PDFs downloaded: {results['pdfs_downloaded']}")
+            
+            # Update overall results
+            self.overall_results["processed_urls"].append({
+                "url": first_url,
+                "documents_downloaded": results['pdfs_downloaded'],
+                "status": "success",
+                "details": {
+                    "total_links_found": results['total_links_found'],
+                    "pdf_links_found": results['pdf_links_found']
+                }
+            })
+            self.overall_results["total_documents"] += results['pdfs_downloaded']
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error during dynamic scraping: {e}")
+            self.overall_results["processed_urls"].append({
+                "url": first_url,
+                "documents_downloaded": 0,
+                "status": "failed",
+                "error": str(e)
+            })
+            self.overall_results["failed_urls"].append(first_url)
+            return None
+
+
+
+    def perform_dynamic_scraping(self, input_file: str = "input_urls.txt", max_depth: int = 2, delay: float = 1.0):
+        """Perform dynamic scraping on the first URL from input file"""
+        logger.info(f"Starting dynamic scraping from: {input_file}")
+        
+        # Read the first URL from input file
+        if not os.path.exists(input_file):
+            logger.error(f"Input file {input_file} not found!")
+            return None
+        
+        with open(input_file, 'r', encoding='utf-8') as f:
+            urls = [line.strip() for line in f if line.strip() and line.startswith(('http://', 'https://'))]
+        
+        if not urls:
+            logger.error("No valid URLs found in input file!")
+            return None
+        
+        # Take the first URL
+        first_url = urls[0]
+        logger.info(f"Using first URL: {first_url}")
+        
+        # Perform dynamic scraping
+        try:
+            results = self.dynamic_scraper.scrape_dynamic_website(
+                start_url=first_url,
+                max_depth=max_depth,
+                delay=delay
+            )
+            
+            logger.info(f"Dynamic scraping completed!")
+            logger.info(f"Total links found: {results['total_links_found']}")
+            logger.info(f"PDF links found: {results['pdf_links_found']}")
+            logger.info(f"PDFs downloaded: {results['pdfs_downloaded']}")
+            
+            # Update overall results
+            self.overall_results["processed_urls"].append({
+                "url": first_url,
+                "documents_downloaded": results['pdfs_downloaded'],
+                "status": "success",
+                "details": {
+                    "total_links_found": results['total_links_found'],
+                    "pdf_links_found": results['pdf_links_found']
+                }
+            })
+            self.overall_results["total_documents"] += results['pdfs_downloaded']
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error during dynamic scraping: {e}")
+            self.overall_results["processed_urls"].append({
+                "url": first_url,
+                "documents_downloaded": 0,
+                "status": "failed",
+                "error": str(e)
+            })
+            self.overall_results["failed_urls"].append(first_url)
+            return None
 
 def main():
-    """Main function with command line interface for PDF-only collection"""
+    """Main function with command line interface for dynamic scraping"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Autonomous PDF Collection Agent (Academic Focus)')
-    parser.add_argument('--input', '-i', required=True, 
-                       help='Input file or folder containing URLs (txt, json, csv)')
+    parser = argparse.ArgumentParser(description='Autonomous Dynamic Web Scraping Agent')
+    parser.add_argument('--input', '-i', default='input_urls.txt',
+                       help='Input file containing URLs (txt, json, csv)')
     parser.add_argument('--depth', '-d', type=int, default=2,
                        help='Maximum depth for link following (default: 2)')
     parser.add_argument('--delay', '-w', type=float, default=1.0,
                        help='Delay between requests in seconds (default: 1.0)')
-    parser.add_argument('--resume', '-r', action='store_true',
-                       help='Resume from previous progress')
+    parser.add_argument('--mode', '-m', choices=['dynamic', 'pdf-only'], default='dynamic',
+                       help='Scraping mode: dynamic (with JS rendering) or pdf-only')
     
     args = parser.parse_args()
     
     # Initialize agent
     agent = AutonomousDocumentAgent()
     
-    # Load previous progress if resuming
-    if args.resume:
-        agent.load_progress()
-    
-    # Load links based on input type
-    if os.path.isfile(args.input):
-        links = agent.load_links_from_file(args.input)
-    elif os.path.isdir(args.input):
-        links = agent.load_links_from_folder(args.input)
-    else:
-        logger.error(f"Input path not found: {args.input}")
-        return
-    
-    if not links:
-        logger.error("No valid links found to process")
-        return
-    
-    # Filter out already processed URLs if resuming
-    if args.resume:
-        processed_urls = [item['url'] for item in agent.overall_results['processed_urls']]
-        new_links = [url for url in links if url not in processed_urls]
-        skipped = len(links) - len(new_links)
-        logger.info(f"Resuming: {len(new_links)} new URLs to process (skipped {skipped} already processed)")
-        links = new_links
-    
-    # Process all links
-    if links:
-        agent.process_multiple_urls(
-            urls=links,
+    if args.mode == 'dynamic':
+        # Use the new dynamic scraping functionality
+        results = agent.perform_dynamic_scraping(
+            input_file=args.input,
             max_depth=args.depth,
             delay=args.delay
         )
         
+        if results:
+            # Generate final report
+            agent.generate_report()
+        else:
+            logger.error("Dynamic scraping failed!")
+    else:
+        # Original PDF-only functionality
+        # Load links based on input type
+        if os.path.isfile(args.input):
+            links = agent.load_links_from_file(args.input)
+        elif os.path.isdir(args.input):
+            links = agent.load_links_from_folder(args.input)
+        else:
+            logger.error(f"Input path not found: {args.input}")
+            return
+
+        if not links:
+            logger.error("No valid links found to process")
+            return
+
+        # Process the first link only
+        first_link = links[0]
+        logger.info(f"Processing first URL only: {first_link}")
+        
+        agent.process_single_url(first_link, max_depth=args.depth)
+        
         # Generate final report
         agent.generate_report()
-    else:
-        logger.info("No new URLs to process")
 
 if __name__ == "__main__":
     main()

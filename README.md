@@ -1,129 +1,72 @@
-# Autonomous Document Collection Agent
+# Dynamic Web Scraping Agent System
 
-This is an advanced autonomous web scraping and document downloading system that uses AI to intelligently identify, analyze, and download documents from provided URLs. The system follows links to discover more documents and categorizes them automatically.
+This system provides an AI-powered dynamic web scraping pipeline with support for multiple technologies (Selenium, Playwright, BeautifulSoup). It uses LangChain, LangGraph, and Ollama to create an autonomous agent that can intelligently navigate websites, extract links and anchors, and download PDFs.
 
 ## Features
 
-- **Autonomous Scraping**: Automatically follows links from main URLs to sub-URLs to find documents
-- **AI-Powered Analysis**: Uses LLM to identify document links, analyze content, and determine crawling strategies
-- **Multi-Format Support**: Downloads various document types (PDF, DOC, PPT, XLS, TXT, etc.)
-- **Smart Categorization**: Automatically categorizes downloaded documents
-- **Batch Processing**: Processes multiple URLs in batches
-- **Robust Error Handling**: Comprehensive error handling and retry mechanisms
-- **Progress Tracking**: Saves progress and allows resumption of interrupted downloads
+- **Multi-Technology Scraping**: Uses Playwright (primary), Selenium (fallback), and requests (static content) for comprehensive web scraping
+- **Dynamic Content Handling**: Can handle JavaScript-heavy sites with proper rendering
+- **PDF Detection & Download**: Automatically detects and downloads PDF files
+- **Link Extraction**: Extracts all links, anchors, and other potential document sources
+- **Organized Storage**: Organizes downloaded PDFs by domain in structured folders
+- **Agentic AI Integration**: Integrates with LangGraph for intelligent decision-making
+- **Stealth Browsers**: Uses undetected-chromedriver for anti-bot evasion
+- **Comprehensive URL Discovery**: Finds URLs in JavaScript, HTML attributes, and various HTML elements
 
-## Architecture
-
-- **Web Scraping Tools**: Enhanced scraping with JavaScript URL extraction, retry mechanisms, and content-type detection
-- **LLM Models**: AI-powered content analysis, document identification, and categorization
-- **Document Agents**: Autonomous agents that make intelligent decisions about crawling and downloading
-- **Configuration**: Flexible configuration with environment variables support
-
-## Setup
+## Installation
 
 1. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   bash install_requirements.sh
+   ```
 
-2. Make sure Ollama is running with a compatible model (e.g., llama3.1:8b):
-```bash
-ollama run llama3.1:8b
-```
-
-3. Configure environment variables in `.env` file (or use the default settings)
+2. Make sure you have Ollama running with a suitable model (e.g., llama3)
 
 ## Usage
 
+### Basic Usage
+
 ```bash
-python main.py -i input_urls.txt -d 2 -w 1.0
+# Run dynamic scraping on the first URL in input_urls.txt (default behavior)
+python main.py
+
+# Run with specific parameters
+python main.py --input input_urls.txt --depth 2 --delay 1.0 --mode dynamic
+
+# Run in PDF-only mode (original functionality)
+python main.py --input input_urls.txt --mode pdf-only
 ```
 
-Options:
-- `-i, --input`: Input file or folder containing URLs (txt, json, csv)
-- `-d, --depth`: Maximum depth for link following (default: 2)
-- `-w, --delay`: Delay between requests in seconds (default: 1.0)
-- `-r, --resume`: Resume from previous progress
+### Command Line Options
 
-## Input Formats
+- `--input` or `-i`: Input file containing URLs (default: input_urls.txt)
+- `--depth` or `-d`: Maximum depth for link following (default: 2)
+- `--delay` or `-w`: Delay between requests in seconds (default: 1.0)
+- `--mode`: Scraping mode - 'dynamic' (with JS rendering) or 'pdf-only' (default: dynamic)
 
-The system supports multiple input formats:
+### Input File Format
 
-- **Text file** (.txt): One URL per line
-- **JSON file** (.json): Array of URLs or object with URL values
-- **CSV file** (.csv): URLs in any column
-
-## Output Structure
+The input file should contain one URL per line, starting with http:// or https://:
 
 ```
-data/
-├── raw/              # Raw downloaded documents
-├── processed/        # Processed documents
-├── organized/        # Organized by category
-│   └── [category]/   # Category-specific folders
-├── progress.json     # Current progress (for resumption)
-└── final_report.json # Final processing report
+https://www.example.com/
+https://www.another-site.org/
 ```
 
-## Enhanced Capabilities
+## Architecture
 
-1. **AI-Enhanced Document Detection**:
-   - Traditional extension-based detection
-   - Content-type header analysis
-   - AI-powered link analysis based on context
-   - JavaScript URL extraction
+- `main.py`: Main entry point with command-line interface
+- `dynamic_scraper.py`: Standalone dynamic scraper (alternative entry point)
+- `src/tools/dynamic_scraper_tool.py`: Core dynamic scraping tool class
+- `src/tools/web_tools.py`: Original static scraping tools
+- `src/agents/`, `src/graph/`, `src/models/`: AI agent components
 
-2. **Intelligent Crawling Strategy**:
-   - Dynamic depth adjustment based on content relevance
-   - Smart link selection using AI
-   - URL validation and filtering
+## How It Works
 
-3. **Robust Download System**:
-   - Retry mechanisms with exponential backoff
-   - Content-type verification
-   - File integrity checks
-   - Duplicate prevention
+The dynamic scraper uses a multi-layered approach:
 
-4. **Advanced Categorization**:
-   - 10+ document categories
-   - Filename, content, and URL-based classification
-   - Confidence scoring
-
-## Configuration
-
-You can customize the system using environment variables in the `.env` file:
-
-- `OLLAMA_BASE_URL`: URL for the Ollama API (default: http://localhost:11434)
-- `OLLAMA_MODEL`: Model name to use (default: llama3.1:8b)
-
-## Accuracy Improvements
-
-The system achieves high accuracy through:
-
-1. **Multi-layered document detection** (extension + content-type + AI analysis)
-2. **Context-aware link identification** using LLM
-3. **Adaptive crawling strategies** based on content analysis
-4. **Comprehensive error handling** and retries
-5. **Duplicate detection and prevention**
-6. **URL validation** before processing
-
-## Example Usage
-
-Create an input file with URLs (input_urls.txt):
-```
-https://example.com/documents
-https://docs.python.org/3/
-https://arxiv.org/list/cs/recent
-```
-
-Run the system:
-```bash
-python main.py -i input_urls.txt -d 3 -w 2.0
-```
-
-This will:
-- Process all URLs in the input file
-- Follow links up to 3 levels deep
-- Wait 2 seconds between requests (respectful crawling)
-- Download documents and categorize them
-- Generate a final report
+1. **Content Extraction**: Tries Playwright first for JavaScript-heavy sites, then Selenium, and finally regular requests
+2. **Link Discovery**: Extracts links from HTML anchors, JavaScript, and various HTML attributes
+3. **PDF Detection**: Uses file extensions, content-type headers, and AI analysis to identify PDFs
+4. **Download & Organization**: Downloads PDFs and organizes them by domain in the `pdfs/` directory
+5. **AI Integration**: Uses LLMs for intelligent link analysis and document categorization
