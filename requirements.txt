@@ -1,0 +1,12 @@
+# requirements.txt
+langchain>=0.1.0
+langchain-community>=0.0.10
+langgraph>=0.0.40
+ollama>=0.1.7
+requests>=2.25.1
+beautifulsoup4>=4.9.3
+networkx>=3.0
+urllib3>=1.26.0
+python-dotenv>=1.0.0
+duckduckgo-search>=3.8.6
+lxml>=4.9.0
